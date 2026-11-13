@@ -26,10 +26,16 @@ tld_reg_date_version = "v2"
 tld_reg_date_resource = f"tld_reg_dates_{tld_reg_date_version}.txt"
 suffix_data_cache_file = f"suffix_data_{tld_reg_date_version}.cache"
 
-ipv4_pattern = re.compile(r'^(([0-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5])\.){3}([0-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5])$')
-ipv6_pattern = re.compile(r'(([0-9a-fA-F]{1,4}:){7,7}[0-9a-fA-F]{1,4}|([0-9a-fA-F]{1,4}:){1,7}:|([0-9a-fA-F]{1,4}:){1,6}:[0-9a-fA-F]{1,4}|([0-9a-fA-F]{1,4}:){1,5}(:[0-9a-fA-F]{1,4}){1,2}|([0-9a-fA-F]{1,4}:){1,4}(:[0-9a-fA-F]{1,4}){1,3}|([0-9a-fA-F]{1,4}:){1,3}(:[0-9a-fA-F]{1,4}){1,4}|([0-9a-fA-F]{1,4}:){1,2}(:[0-9a-fA-F]{1,4}){1,5}|[0-9a-fA-F]{1,4}:((:[0-9a-fA-F]{1,4}){1,6})|:((:[0-9a-fA-F]{1,4}){1,7}|:)|fe80:(:[0-9a-fA-F]{0,4}){0,4}%[0-9a-zA-Z]{1,}|::(ffff(:0{1,4}){0,1}:){0,1}((25[0-5]|(2[0-4]|1{0,1}[0-9]){0,1}[0-9])\.){3,3}(25[0-5]|(2[0-4]|1{0,1}[0-9]){0,1}[0-9])|([0-9a-fA-F]{1,4}:){1,4}:((25[0-5]|(2[0-4]|1{0,1}[0-9]){0,1}[0-9])\.){3,3}(25[0-5]|(2[0-4]|1{0,1}[0-9]){0,1}[0-9]))')
+ipv4_pattern = re.compile(
+    r"^(([0-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5])\.){3}([0-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5])$"
+)
+ipv6_pattern = re.compile(
+    r"(([0-9a-fA-F]{1,4}:){7,7}[0-9a-fA-F]{1,4}|([0-9a-fA-F]{1,4}:){1,7}:|([0-9a-fA-F]{1,4}:){1,6}:[0-9a-fA-F]{1,4}|([0-9a-fA-F]{1,4}:){1,5}(:[0-9a-fA-F]{1,4}){1,2}|([0-9a-fA-F]{1,4}:){1,4}(:[0-9a-fA-F]{1,4}){1,3}|([0-9a-fA-F]{1,4}:){1,3}(:[0-9a-fA-F]{1,4}){1,4}|([0-9a-fA-F]{1,4}:){1,2}(:[0-9a-fA-F]{1,4}){1,5}|[0-9a-fA-F]{1,4}:((:[0-9a-fA-F]{1,4}){1,6})|:((:[0-9a-fA-F]{1,4}){1,7}|:)|fe80:(:[0-9a-fA-F]{0,4}){0,4}%[0-9a-zA-Z]{1,}|::(ffff(:0{1,4}){0,1}:){0,1}((25[0-5]|(2[0-4]|1{0,1}[0-9]){0,1}[0-9])\.){3,3}(25[0-5]|(2[0-4]|1{0,1}[0-9]){0,1}[0-9])|([0-9a-fA-F]{1,4}:){1,4}:((25[0-5]|(2[0-4]|1{0,1}[0-9]){0,1}[0-9])\.){3,3}(25[0-5]|(2[0-4]|1{0,1}[0-9]){0,1}[0-9]))"
+)
 # regex via MS Defender Blog Post
-private_ipv4_pattern = re.compile(r'(^127\.)|(^10\.)|(^172\.1[6-9]\.|^172\.2[0-9]\.|^172\.3[0-1]\.)|(^192\.168\.)')
+private_ipv4_pattern = re.compile(
+    r"(^127\.)|(^10\.)|(^172\.1[6-9]\.|^172\.2[0-9]\.|^172\.3[0-1]\.)|(^192\.168\.)"
+)
 
 
 @dataclass
@@ -42,6 +48,7 @@ class ParsedResult:
     fqdn: fully qualified domain name
     pqdn: partially qualified domain name: all the stuff to the left of the registrable domain
     """
+
     tld: str
     tld_puny: str
     tld_type: str
@@ -75,7 +82,7 @@ class ParsedResult:
     @property
     def pqdn(self) -> Optional[str]:
         if self.is_fqdn:
-            return '.'.join(self.host_labels[:-1])
+            return ".".join(self.host_labels[:-1])
         return None
 
     @property
@@ -116,7 +123,9 @@ class ParsedResult:
 
 
 class Suffixes:
-    def __init__(self, read_cache=True, save_cache=True, cache_path=suffix_data_cache_file):
+    def __init__(
+        self, read_cache=True, save_cache=True, cache_path=suffix_data_cache_file
+    ):
         if read_cache and cache_path and os.path.exists(cache_path):
             _logger.info("loading suffix data from cache")
             suffix_trie, puny_suffixes = load_trie(cache_path)
@@ -132,54 +141,71 @@ class Suffixes:
                 save_trie(cache_path, self._suffix_trie, self._puny_suffixes)
 
     def tld_types(self, counts=False):
-        """ Return either the distinct set of TLD types or the count of distinct TLD types"""
+        """Return either the distinct set of TLD types or the count of distinct TLD types"""
         tld_types = [node.tld_type for node in self._suffix_trie.root.children.values()]
         if counts:
             return Counter(tld_types)
         return list(set(tld_types))
 
     def get_all_tlds(self):
-        """ Return the set of all known TLDs """
+        """Return the set of all known TLDs"""
         tlds = [node for node in self._suffix_trie.root.children]
         return tlds
 
     def tld_registries(self, counts=False):
-        tld_registries = [node.registry for node in self._suffix_trie.root.children.values()]
+        tld_registries = [
+            node.registry for node in self._suffix_trie.root.children.values()
+        ]
         if counts:
             return Counter(tld_registries)
         return list(set(tld_registries))
 
     def get_tlds_by_registry(self, registry):
-        tlds = [node.label for node in self._suffix_trie.root.children.values() if node.registry == registry]
+        tlds = [
+            node.label
+            for node in self._suffix_trie.root.children.values()
+            if node.registry == registry
+        ]
         return tlds
 
     def get_tld_dataframe(self):
         import pandas as pd
-        data = [[node.label, node.puny, node.tld_type, node.registry, node.create_date]
-                for node in self._suffix_trie.root.children.values()]
-        df = pd.DataFrame(data, columns=['label', 'puny', 'tld_type', 'registry', 'create_date'])
+
+        data = [
+            [node.label, node.puny, node.tld_type, node.registry, node.create_date]
+            for node in self._suffix_trie.root.children.values()
+        ]
+        df = pd.DataFrame(
+            data, columns=["label", "puny", "tld_type", "registry", "create_date"]
+        )
         return df
 
     def get_tld(self, fqdn):
-        """ Return the IANA registered TLD from the FQDN """
+        """Return the IANA registered TLD from the FQDN"""
         if fqdn:
             fqdn = fqdn.lower()
-            node, _ = self._suffix_trie.get_longest_sequence(fqdn, self._puny_suffixes, public_only=True)
+            node, _ = self._suffix_trie.get_longest_sequence(
+                fqdn, self._puny_suffixes, public_only=True
+            )
             if node:
                 return node.get_tld_node().label
         return None
 
     def get_effective_tld(self, fqdn):
-        """ Return the effective TLD for the FQDN """
+        """Return the effective TLD for the FQDN"""
         if fqdn:
             fqdn = fqdn.lower()
-            node, _ = self._suffix_trie.get_longest_sequence(fqdn, self._puny_suffixes, public_only=True)
+            node, _ = self._suffix_trie.get_longest_sequence(
+                fqdn, self._puny_suffixes, public_only=True
+            )
             if node:
                 return node.suffix
         return None
 
-    def parse(self, fqdn, skip_ip_check=False, skip_protocol_check=False, skip_url_check=False):
-        """ Parse a fqdn or url and return a ParsedResult object
+    def parse(
+        self, fqdn, skip_ip_check=False, skip_protocol_check=False, skip_url_check=False
+    ):
+        """Parse a fqdn or url and return a ParsedResult object
 
         Args:
             fqdn (string): the fqdn or url to be parsed
@@ -204,13 +230,15 @@ class Suffixes:
         if skip_protocol_check is False and "://" in fqdn:
             print("doing check")
             index = fqdn.index("://")
-            fqdn = fqdn[index + 3:]
+            fqdn = fqdn[index + 3 :]
             if skip_url_check is False:
-                parts = re.split('[/?]', fqdn)
+                parts = re.split("[/?]", fqdn)
                 if len(parts) > 0:
                     fqdn = parts[0]
 
-        node, host_labels = self._suffix_trie.get_longest_sequence(fqdn, self._puny_suffixes)
+        node, host_labels = self._suffix_trie.get_longest_sequence(
+            fqdn, self._puny_suffixes
+        )
         if not node:
             return None
         private_suffix = None
@@ -225,23 +253,30 @@ class Suffixes:
             tld_node.create_date,
             node.get_effective_tld_node().suffix,
             private_suffix,
-            host_labels)
+            host_labels,
+        )
 
     @staticmethod
     def _ip_result(ip, is_ipv4):
-        return ParsedResult(None, None, None, None, None, None, None, [ip], is_ipv4, not is_ipv4)
+        return ParsedResult(
+            None, None, None, None, None, None, None, [ip], is_ipv4, not is_ipv4
+        )
 
 
 def run_test():
     from fqdn_parser.suffixes import Suffixes
-    domain_suffixes = Suffixes(read_cache=True)
+
+    domain_suffixes = Suffixes()
     # new_suffixes = Suffixes(read_cache=True, cache_path="suffix_data_new.cache")
     # old_suffixes = Suffixes(read_cache=True, cache_path="suffix_data_old.cache")
     # new_tlds = set(new_suffixes.get_all_tlds())
     # old_tlds = set(old_suffixes.get_all_tlds())
     # delta = old_tlds - new_tlds
     # print(delta)
-    # result = suffixes.parse("not a fqdn")
+    # result = Suffixes.parse("not a fqdn")
+
+    for d in domain_suffixes.get_all_tlds():
+        print(d)
 
     fqdn = "aol.notld"
     fqdn = "aol.notld.com"

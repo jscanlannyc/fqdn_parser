@@ -8,7 +8,7 @@ from fqdn_parser.utils.trie import Trie
 _logger = logging.getLogger(__name__)
 
 # links to iana and icann sources for TLD / suffix information
-TLD_LIST_URL = "https://www.iana.org/domains/root/db"
+TLD_LIST_JSON_URL = "https://data.iana.org/TLD/v1/tlds.json"
 SUFFIX_LIST_URL = "https://publicsuffix.org/list/public_suffix_list.dat"
 
 # manually parse all IANA TLD pages and pulled registration dates. This takes quite a while to do
@@ -19,8 +19,7 @@ PUNY_PREFIX = "xn--"
 
 
 def build_suffixes():
-    tld_create_dates = _load_tld_create_dates()
-    _suffix_trie = _load_all_tlds(tld_create_dates)
+    _suffix_trie = _load_json_tlds()
     _load_manual_tlds(_suffix_trie)
     _enrich_tld_suffixes(_suffix_trie)
     # create a punycode suffix reverse index
@@ -32,66 +31,46 @@ def build_suffixes():
     return _suffix_trie, _puny_suffixes
 
 
-def _load_tld_create_dates():
-    """This resource file was created by parsing the individual IANA TLD pages. This takes way to long
-    to do every time the TLD data cache is being rebuilt (and I don't want to piss IANA off), so
-    I'm running this periodically and will update the source as new TLDs are created.
-    """
-    import importlib.resources
-    import fqdn_parser as fp
+def _load_json_tlds() -> Trie:
+    """On October 15th, 2026, IANA updated their table formatting again, but
+    also introduced a json-file which contains data the previous parser used.
 
-    with importlib.resources.path(fp, tld_reg_date_resource) as resource:
-        with open(resource, "r") as handle:
-            lines = handle.readlines()
-    tld_create_dates = {}
-    for line in lines:
-        parts = line.strip().split(",")
-        tld_create_dates[parts[0]] = datetime.strptime(parts[1], "%Y-%m-%d").date()
-    return tld_create_dates
+    Simultaneously, they introduced a JSON file which provides most of the same
+    data needed for this script to run. This ingests that JSON file.
 
-
-def _load_all_tlds(tld_create_dates):
-    """Load all known TLDs from iana. The html page has the TLD
-    type and the registry information so I have to parse the html to get the info.
-    Yup, totally know this is brittle.
+    Reference:
+    https://www.iana.org/domains/root/db
     """
     trie = Trie()
-    revoked_tld = "Not assigned"
-    # regex for the IANA URL for idn TLDs
-    PUNY_TLD_PATTERN = "^\/domains\/root\/db\/xn--(.+?)\.html"
-    response = requests.get(TLD_LIST_URL)
+    response = requests.get(TLD_LIST_JSON_URL)
+    PUNY_TLD_PATTERN = "^xn--.*$"
     if response.status_code != 200:
-        raise Exception(f"{TLD_LIST_URL} error {response.status_code}")
-
-    soup = BeautifulSoup(response.content, "html.parser")
-    table = soup.find("table", id="tld-table")
-    table = table.find("tbody")
-    tld_rows = table.find_all("tr")
-    for tld_row in tld_rows:
-        data = tld_row.find_all("td")
-        if len(data) != 3:
-            raise Exception("IANA tld html format changed")
-        # parse out tld and delegation record link
-        link = data[0].find("a")
-        # this is brittle, but parsing out the right to left and L2R unicode chars
-        tld = link.text.replace(".", "").replace("‏", "").replace("‎", "")
-        # parse the TLD type
-        tld_type = data[1].text
-        # parse the TLD registry
-        registry = data[2].text
-        # only collect active TLDs
-        if registry != revoked_tld:
-            # check for punycode TLD (starts with xn--)
-            delegation_link = link["href"]
-            puny_tld = re.search(PUNY_TLD_PATTERN, delegation_link)
-            if puny_tld:
-                puny_tld = PUNY_PREFIX + puny_tld.group(1)
-            # get the TLD registration date
-            tld_reg_date = tld_create_dates.get(tld)
-            if tld_reg_date is None:
-                _logger.warning(f"Registration date not found for TLD '{tld}' ")
-            # populate tld info
-            trie.insert_tld_node(tld, puny_tld, tld_type, registry, tld_reg_date)
+        raise requests.HTTPError(f"{TLD_LIST_JSON_URL} error {response.status_code}")
+    tld_json = response.json()["domains"]
+    for tld_entry in tld_json:
+        # the shorthand domain, without a period (ex. "com", "net", "org")
+        tld = tld_entry["name"]
+        # whether the domain is a country code, generic suffix, or marked for special use
+        tld_type = tld_entry["type"]
+        # if the tld is active, retired, pending approval
+        status = tld_entry["status"]
+        if status not in ["retired"]:
+            # the name of the organization that manages the tld
+            registry = None
+            if tld_entry["manager"] and "organization" in tld_entry["manager"]:
+                registry = tld_entry["manager"]["organization"]
+            # if the domain is represented in unicode, get the punyicode representation,
+            # prefixed by 'xn--' for that domain.
+            puny_tld = None
+            if re.search(PUNY_TLD_PATTERN, tld):
+                puny_tld = tld
+                # the actual unicode representation of the punycode
+                tld = tld_entry["ulabel"]
+            # when the tld was assigned to its manager, if it was delegated for management outside icann
+            tld_delegation_date = tld_entry["events"]["delegation"]
+            if not tld_delegation_date:
+                _logger.warning(f"Delegation date not found for TLD '{tld}'")
+            trie.insert_tld_node(tld, puny_tld, tld_type, registry, tld_delegation_date)
     return trie
 
 
@@ -116,7 +95,7 @@ def _enrich_tld_suffixes(_suffix_trie: Trie):
     """
     response = requests.get(SUFFIX_LIST_URL)
     if response.status_code != 200:
-        raise Exception(f"{SUFFIX_LIST_URL} error {response.status_code}")
+        raise requests.HTTPError(f"{SUFFIX_LIST_URL} error {response.status_code}")
     suffix_list = response.content.decode("utf-8")
     suffix_list = suffix_list.split("\n")
 
